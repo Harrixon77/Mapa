@@ -1,0 +1,7 @@
+{
+  "name": "AppMap",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular-standalone"
+}
