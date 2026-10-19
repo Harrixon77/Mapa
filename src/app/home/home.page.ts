@@ -1,9 +1,9 @@
-import { AfterViewInit, Component, signal, inject} from '@angular/core';
+import { AfterViewInit, Component, computed, signal, inject} from '@angular/core';
 import { IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonFab, IonFabButton } from '@ionic/angular';
 import  * as  L from "leaflet";
 //import { map } from 'rxjs/internal/operators/map';
 import { Geolocation } from '@capacitor/geolocation';
-import { PhotoService } from '../services/photo';
+import { MAX_FOTOS,PhotoService } from '../services/photo';
 
 interface PuntosDeInteres {
   id : string;
@@ -146,7 +146,12 @@ interface PuntosDeInteres {
 export class HomePage implements AfterViewInit {
   private photoService = inject(PhotoService);
   puntoSeleccionado = signal<PuntosDeInteres | null>(null);
-  fotoActual = signal<string | undefined>(undefined);
+  maxFotos = MAX_FOTOS;
+
+fotosActuales = computed(() => {
+  const punto = this.puntoSeleccionado();
+  return punto ? this.photoService.getPhotos(punto.id) : [];
+});
 
   private map !: L.Map ;
   private ubicacionUsuario!: {latitude: number, longitude: number};
@@ -261,17 +266,21 @@ export class HomePage implements AfterViewInit {
 //AYUDA IA +
   seleccionarPunto(p: PuntosDeInteres) {
   this.puntoSeleccionado.set(p);
-  this.fotoActual.set(this.photoService.getPhoto(p.id)); // busca en el "casillero"
 }
 
 async tomarFoto() {
   const punto = this.puntoSeleccionado();
   if (!punto) return;
 
-  const foto = await this.photoService.takePhoto(punto.id);
-  if (foto) {
-    this.fotoActual.set(foto);
-  }
+  const resultado = await this.photoService.takePhoto(punto.id);
+
+  if (resultado === 'limite') alert(`Máximo ${MAX_FOTOS} fotos por punto.`);
+  if (resultado === 'sin-espacio') alert('No hay espacio para guardar más fotos.');
+}
+
+borrarFoto(index: number) {
+  const punto = this.puntoSeleccionado();
+  if (punto) this.photoService.deletePhoto(punto.id, index);
 }
 
 cerrarPanel() {

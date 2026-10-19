@@ -1,34 +1,61 @@
 import { Injectable, signal } from '@angular/core';
 import { Camera } from '@capacitor/camera';
 
+const CLAVE = 'fotos_por_punto';
+export const MAX_FOTOS = 5;
+
 @Injectable({ providedIn: 'root' })
 export class PhotoService {
-  // Aquí guardamos las fotos: { 'id del punto': 'foto en base64' }
-  private photos = signal<Record<string, string>>({});
+  // Antes: { 'id': 'foto' }   Ahora: { 'id': ['foto1', 'foto2', ...] }
+  private photos = signal<Record<string, string[]>>(this.cargar());
 
-  // Devuelve la foto de un punto (o undefined si no tiene)
-  getPhoto(pointId: string): string | undefined {
-    return this.photos()[pointId];
+  getPhotos(pointId: string): string[] {
+    return this.photos()[pointId] ?? [];
   }
 
-  // Toma la foto y la guarda asociada al ID del punto
-  async takePhoto(pointId: string): Promise<string | undefined> {
-    const result = await Camera.takePhoto({
-      quality: 90,
-      includeMetadata: true,
-    });
+  async takePhoto(pointId: string): Promise<'ok' | 'limite' | 'sin-espacio' | 'cancelado'> {
+    const actuales = this.getPhotos(pointId);
+    if (actuales.length >= MAX_FOTOS) return 'limite';
 
-    if (!result.webPath) {
-      console.error('No se obtuvo webPath de la foto');
-      return undefined;
+    try {
+      const result = await Camera.takePhoto({ quality: 90 });
+      if (!result.webPath) return 'cancelado';
+
+      const base64 = await this.webPathToBase64(result.webPath);
+
+      const nuevo = { ...this.photos(), [pointId]: [...actuales, base64] };
+      if (!this.guardar(nuevo)) return 'sin-espacio';
+
+      this.photos.set(nuevo);
+      return 'ok';
+    } catch (error) {
+      console.error('Foto cancelada o con error:', error);
+      return 'cancelado';
     }
+  }
 
-    const base64 = await this.webPathToBase64(result.webPath);
+  deletePhoto(pointId: string, index: number) {
+    const lista = this.getPhotos(pointId).filter((_, i) => i !== index);
+    const nuevo = { ...this.photos(), [pointId]: lista };
+    this.guardar(nuevo);
+    this.photos.set(nuevo);
+  }
 
-    // Copiamos el objeto anterior y le agregamos la nueva foto
-    this.photos.update((all) => ({ ...all, [pointId]: base64 }));
+  private cargar(): Record<string, string[]> {
+    try {
+      return JSON.parse(localStorage.getItem(CLAVE) ?? '{}');
+    } catch {
+      return {};
+    }
+  }
 
-    return base64;
+  private guardar(datos: Record<string, string[]>): boolean {
+    try {
+      localStorage.setItem(CLAVE, JSON.stringify(datos));
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async webPathToBase64(webPath: string): Promise<string> {

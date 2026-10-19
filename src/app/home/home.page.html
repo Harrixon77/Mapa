@@ -23,15 +23,20 @@
         <ion-button fill="clear" size="small" (click)="cerrarPanel()">✕</ion-button>
       </div>
  
-      @if (fotoActual(); as foto) {
-        <img [src]="foto" alt="Foto del lugar" />
-      } @else {
-        <p>Aún no hay foto de este lugar.</p>
-      }
+      <div class="galeria">
+  @for (foto of fotosActuales(); track $index) {
+    <div class="foto-item">
+      <img [src]="foto" alt="Foto de {{ punto.nombre }}" />
+      <button class="borrar" (click)="borrarFoto($index)">✕</button>
+    </div>
+  } @empty {
+    <p>Aún no hay fotos de este lugar.</p>
+  }
+</div>
 
-      <ion-button expand="block" (click)="tomarFoto()">
-        {{ fotoActual() ? 'Retomar foto' : 'Tomar foto' }}
-      </ion-button>
+<ion-button expand="block" [disabled]="fotosActuales().length >= maxFotos" (click)="tomarFoto()">
+  Tomar foto ({{ fotosActuales().length }}/{{ maxFotos }})
+</ion-button>
     </div>
   }
   <!-- ===== PANEL NUEVO (termina aquí) ===== -->
