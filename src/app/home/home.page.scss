@@ -1,27 +1,27 @@
-#container {
-  text-align: center;
-
+.panel-punto {
   position: absolute;
+  bottom: 0;
   left: 0;
   right: 0;
-  top: 50%;
-  transform: translateY(-50%);
-}
+  z-index: 1000; // Leaflet usa z-index altos; este lo pone por encima del mapa
+  background: white;
+  padding: 16px;
+  border-radius: 16px 16px 0 0;
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.2);
+  max-height: 60%;
+  overflow-y: auto;
 
-#container strong {
-  font-size: 20px;
-  line-height: 26px;
-}
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
 
-#container p {
-  font-size: 16px;
-  line-height: 22px;
+  h3 { margin: 0; }
 
-  color: #8c8c8c;
-
-  margin: 0;
-}
-
-#container a {
-  text-decoration: none;
+  img {
+    width: 100%;
+    border-radius: 12px;
+    margin: 12px 0;
+  }
 }
