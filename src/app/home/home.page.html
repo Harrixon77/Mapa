@@ -34,9 +34,17 @@
   }
 </div>
 
-<ion-button expand="block" [disabled]="fotosActuales().length >= maxFotos" (click)="tomarFoto()">
-  Tomar foto ({{ fotosActuales().length }}/{{ maxFotos }})
-</ion-button>
+<div class="acciones">
+  <ion-button expand="block" [disabled]="fotosActuales().length >= maxFotos" (click)="tomarFoto()">
+    📷 Tomar foto
+  </ion-button>
+
+  <ion-button expand="block" fill="outline" [disabled]="fotosActuales().length >= maxFotos" (click)="subirDeGaleria()">
+    🖼️ Galería
+  </ion-button>
+</div>
+
+<small class="contador">{{ fotosActuales().length }}/{{ maxFotos }} fotos</small>
     </div>
   }
   <!-- ===== PANEL NUEVO (termina aquí) ===== -->

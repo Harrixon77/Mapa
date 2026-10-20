@@ -277,6 +277,15 @@ async tomarFoto() {
   if (resultado === 'limite') alert(`Máximo ${MAX_FOTOS} fotos por punto.`);
   if (resultado === 'sin-espacio') alert('No hay espacio para guardar más fotos.');
 }
+async subirDeGaleria() {
+  const punto = this.puntoSeleccionado();
+  if (!punto) return;
+
+  const resultado = await this.photoService.pickFromGallery(punto.id);
+
+  if (resultado === 'limite') alert(`Máximo ${MAX_FOTOS} fotos por punto.`);
+  if (resultado === 'sin-espacio') alert('No hay espacio para guardar más fotos.');
+}
 
 borrarFoto(index: number) {
   const punto = this.puntoSeleccionado();

@@ -1,4 +1,17 @@
 .panel-punto {
+  .acciones {
+  display: flex;
+  gap: 8px;
+
+  ion-button { flex: 1; }
+}
+
+.contador {
+  display: block;
+  text-align: center;
+  margin-top: 8px;
+  color: #8e8e93;
+}
   .galeria {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
