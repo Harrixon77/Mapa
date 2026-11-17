@@ -1,72 +1,285 @@
-.panel-punto {
-  .acciones {
-  display: flex;
-  gap: 8px;
-
-  ion-button { flex: 1; }
+:host {
+  --vidrio: rgba(255, 255, 255, 0.85);
+  --texto: #1c1c1e;
+  --suave: #8e8e93;
+  --azul: #007aff;
 }
 
-.contador {
-  display: block;
-  text-align: center;
-  margin-top: 8px;
-  color: #8e8e93;
-}
-  .galeria {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 8px;
-  margin: 12px 0;
-
-  p { grid-column: 1 / -1; }
-}
-
-.foto-item {
-  position: relative;
-
-  img {
-    width: 100%;
-    height: 100px;
-    object-fit: cover;
-    border-radius: 10px;
-    margin: 0;
-  }
-
-  .borrar {
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 24px;
-    height: 24px;
-    border: none;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.6);
-    color: white;
+@media (prefers-color-scheme: dark) {
+  :host {
+    --vidrio: rgba(44, 44, 46, 0.85);
+    --texto: #f2f2f7;
   }
 }
+
+/* ---------- Chips flotantes ---------- */
+.chips {
   position: absolute;
-  bottom: 0;
+  top: 12px;
   left: 0;
   right: 0;
-  z-index: 1000; // Leaflet usa z-index altos; este lo pone por encima del mapa
-  background: white;
-  padding: 16px;
-  border-radius: 16px 16px 0 0;
-  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.2);
-  max-height: 60%;
+  z-index: 1100;
+  display: flex;
+  gap: 8px;
+  padding: 0 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.chip {
+  flex: 0 0 auto;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--vidrio);
+  color: var(--texto);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+
+  &:active { transform: scale(0.96); }
+  &.activo { background: var(--azul); color: #fff; }
+}
+
+/* ---------- Botones circulares ---------- */
+.controles {
+  position: absolute;
+  right: 14px;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.circulo {
+  width: 48px;
+  height: 48px;
+  border: none;
+  border-radius: 50%;
+  font-size: 20px;
+  background: var(--vidrio);
+  color: var(--texto);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.2);
+  transition: transform 0.15s ease;
+
+  &:active { transform: scale(0.92); }
+}
+
+/* ---------- Panel del lugar ---------- */
+.panel-punto {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  z-index: 1100;
+  max-height: 62%;
   overflow-y: auto;
+  padding: 16px;
+  border-radius: 24px;
+  background: var(--vidrio);
+  color: var(--texto);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.25);
+  animation: subir 0.25s ease;
 
   .panel-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    gap: 8px;
   }
 
-  h3 { margin: 0; }
+  .panel-titulo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
 
-  img {
+  .panel-emoji { font-size: 28px; }
+
+  h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+  }
+
+  small { color: var(--suave); }
+
+  .panel-acciones { display: flex; gap: 4px; }
+
+  .galeria {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+    gap: 8px;
+    margin: 14px 0;
+
+    p { grid-column: 1 / -1; color: var(--suave); margin: 0; }
+  }
+
+  .foto-item {
+    position: relative;
+
+    img {
+      width: 100%;
+      height: 90px;
+      object-fit: cover;
+      border-radius: 14px;
+    }
+
+    .borrar {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 24px;
+      height: 24px;
+      border: none;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.6);
+      color: #fff;
+    }
+  }
+
+  .acciones {
+    display: flex;
+    gap: 8px;
+
+    ion-button { flex: 1; }
+  }
+
+  .contador {
+    display: block;
+    text-align: center;
+    margin-top: 6px;
+  }
+
+  .eliminar {
+    display: block;
     width: 100%;
+    margin-top: 10px;
+    padding: 8px;
+    border: none;
+    background: none;
+    color: #ff3b30;
+    font-size: 14px;
+  }
+}
+
+.icono {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(120, 120, 128, 0.16);
+  font-size: 16px;
+  color: inherit;
+}
+
+@keyframes subir {
+  from { transform: translateY(30px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+/* ---------- Modales (hojas inferiores) ---------- */
+ion-modal {
+  --border-radius: 22px;
+}
+
+.modal-titulo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+
+  h2 { margin: 0; font-weight: 700; }
+  span { color: #8e8e93; }
+}
+
+.fila {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 4px;
+  border-bottom: 1px solid rgba(120, 120, 128, 0.2);
+
+  &:active { background: rgba(120, 120, 128, 0.1); }
+
+  .fila-icono {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
     border-radius: 12px;
-    margin: 12px 0;
+    background: rgba(120, 120, 128, 0.14);
+  }
+
+  .fila-texto {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+
+    strong {
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    small { color: #8e8e93; }
+  }
+}
+
+.vacio {
+  text-align: center;
+  color: #8e8e93;
+  margin-top: 30px;
+}
+
+.campo {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px;
+  margin-top: 8px;
+  border: none;
+  border-radius: 14px;
+  font-size: 16px;
+  background: rgba(120, 120, 128, 0.14);
+  color: var(--ion-text-color, #000);
+  outline: none;
+}
+
+.etiqueta {
+  margin: 18px 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #8e8e93;
+  text-transform: uppercase;
+}
+
+.categorias {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+
+  .chip {
+    background: rgba(120, 120, 128, 0.14);
+    color: var(--ion-text-color, #000);
+    box-shadow: none;
+    backdrop-filter: none;
+
+    &.activo { background: #007aff; color: #fff; }
   }
 }

@@ -1,37 +1,58 @@
 import { Injectable, signal } from '@angular/core';
 import { Camera } from '@capacitor/camera';
+import { Capacitor } from '@capacitor/core';
 
 const CLAVE = 'fotos_por_punto';
 export const MAX_FOTOS = 5;
-export type ResultadoFoto = 'ok' | 'limite' | 'sin-espacio' | 'cancelado';
+export type ResultadoFoto =   | 'ok' | 'limite' | 'sin-espacio' | 'cancelado' | 'sin-permiso' | 'error';
 
 @Injectable({ providedIn: 'root' })
 export class PhotoService {
   // Antes: { 'id': 'foto' }   Ahora: { 'id': ['foto1', 'foto2', ...] }
   private photos = signal<Record<string, string[]>>(this.cargar());
+  ultimoError = '';
 
   getPhotos(pointId: string): string[] {
     return this.photos()[pointId] ?? [];
   }
 
+
+
+private async asegurarPermisos(): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) return true;
+
+  let estado = await Camera.checkPermissions();
+
+  if (estado.camera !== 'granted') {
+    estado = await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+  
+  }
+  return estado.camera === 'granted';
+  
+}
+  
+
   async takePhoto(pointId: string): Promise<ResultadoFoto> {
+    
   if (this.getPhotos(pointId).length >= MAX_FOTOS) return 'limite';
 
   try {
+  if (!(await this.asegurarPermisos())) return 'sin-permiso';
     const result = await Camera.takePhoto({ quality: 90 });
     if (!result.webPath) return 'cancelado';
     return await this.agregarFotos(pointId, [result.webPath]);
-  } catch (error) {
-    console.error('Foto cancelada o con error:', error);
-    return 'cancelado';
-  }
+    } catch (error) {
+    console.error('Error en la cámara:', error);
+      this.ultimoError = String((error as { message?: string })?.message ?? error);
+    return this.esCancelacion(error) ? 'cancelado' : 'error';
+    }
 }
 
 async pickFromGallery(pointId: string): Promise<ResultadoFoto> {
   const disponibles = MAX_FOTOS - this.getPhotos(pointId).length;
   if (disponibles <= 0) return 'limite';
-
   try {
+  if (!(await this.asegurarPermisos())) return 'sin-permiso';
     const { results } = await Camera.chooseFromGallery({
       allowMultipleSelection: true,
       limit: disponibles,
@@ -45,11 +66,17 @@ async pickFromGallery(pointId: string): Promise<ResultadoFoto> {
 
     if (rutas.length === 0) return 'cancelado';
     return await this.agregarFotos(pointId, rutas);
-  } catch (error) {
-    console.error('Galería cancelada o con error:', error);
-    return 'cancelado';
+} catch (error) {
+    console.error('Error en la galería:', error);
+      this.ultimoError = String((error as { message?: string })?.message ?? error);
+    return this.esCancelacion(error) ? 'cancelado' : 'error';
   }
 }
+private esCancelacion(error: unknown): boolean {
+  return /cancel/i.test(String((error as { message?: string })?.message ?? error));
+}
+
+
 
 // Parte común: achica cada foto y las guarda todas juntas
 private async agregarFotos(pointId: string, rutas: string[]): Promise<ResultadoFoto> {
@@ -77,6 +104,11 @@ private async agregarFotos(pointId: string, rutas: string[]): Promise<ResultadoF
     this.guardar(nuevo);
     this.photos.set(nuevo);
   }
+  deleteAll(pointId: string) {
+  const { [pointId]: _borrado, ...resto } = this.photos();
+  this.guardar(resto);
+  this.photos.set(resto);
+}
 
   private cargar(): Record<string, string[]> {
     try {

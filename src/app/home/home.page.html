@@ -1,51 +1,147 @@
 <ion-header [translucent]="true">
   <ion-toolbar>
-    <ion-title>
-      Map 
-    </ion-title>
-    
+    <ion-title>Mis lugares</ion-title>
   </ion-toolbar>
 </ion-header>
 
-<ion-content> 
-  <ion-fab vertical="top" horizontal="end" slot="fixed">
-  <ion-fab-button (click)="centrarEnMiUbicacion()">📍</ion-fab-button>
-</ion-fab>
-<div id ="map" style="width: 100% ; height: 100%;"></div>
-<!-- ===== PANEL NUEVO (empieza aquí) ===== -->
+<ion-content>
+  <div id="map" style="width: 100%; height: 100%;"></div>
+
+  <!-- Chips flotantes -->
+  <div class="chips" slot="fixed">
+    @for (chip of chips(); track chip.clave) {
+      <button class="chip" [class.activo]="filtro() === chip.clave" (click)="filtro.set(chip.clave)">
+        {{ chip.etiqueta }}
+      </button>
+    }
+  </div>
+
+  <!-- Botones flotantes (se ocultan con el panel abierto) -->
+  @if (!puntoSeleccionado()) {
+    <div class="controles" slot="fixed">
+      <button class="circulo" (click)="listaAbierta.set(true)" aria-label="Ver lista">☰</button>
+      <button class="circulo" (click)="centrarEnMiUbicacion()" aria-label="Mi ubicación">📍</button>
+    </div>
+  }
+
+  <!-- Panel del lugar seleccionado -->
   @if (puntoSeleccionado(); as punto) {
-    <div class="panel-punto">
+    <div class="panel-punto" slot="fixed">
       <div class="panel-header">
-        <div>
-          <h3>{{ punto.nombre }}</h3>
-          <small>{{ punto.typo }}</small>
+        <div class="panel-titulo">
+          <span class="panel-emoji">{{ info[punto.typo].emoji }}</span>
+          <div>
+            <h3>{{ punto.nombre }}</h3>
+            <small>{{ info[punto.typo].nombre }} · {{ distanciaPanel() }}</small>
+          </div>
         </div>
-        <ion-button fill="clear" size="small" (click)="cerrarPanel()">✕</ion-button>
+        <div class="panel-acciones">
+          <button class="icono" (click)="alternarFavorito(punto.id)">
+            {{ places.esFavorito(punto.id) ? '⭐' : '☆' }}
+          </button>
+          <button class="icono" (click)="cerrarPanel()">✕</button>
+        </div>
       </div>
- 
+
       <div class="galeria">
-  @for (foto of fotosActuales(); track $index) {
-    <div class="foto-item">
-      <img [src]="foto" alt="Foto de {{ punto.nombre }}" />
-      <button class="borrar" (click)="borrarFoto($index)">✕</button>
+        @for (foto of fotosActuales(); track $index) {
+          <div class="foto-item">
+            <img [src]="foto" alt="Foto de {{ punto.nombre }}" />
+            <button class="borrar" (click)="borrarFoto($index)">✕</button>
+          </div>
+        } @empty {
+          <p>Aún no hay fotos de este lugar.</p>
+        }
+      </div>
+
+      <div class="acciones">
+        <ion-button expand="block" shape="round" [disabled]="fotosActuales().length >= maxFotos" (click)="tomarFoto()">
+          📷 Tomar foto
+        </ion-button>
+        <ion-button expand="block" shape="round" fill="outline" [disabled]="fotosActuales().length >= maxFotos" (click)="subirDeGaleria()">
+          🖼️ Galería
+        </ion-button>
+      </div>
+
+      <small class="contador">{{ fotosActuales().length }}/{{ maxFotos }} fotos</small>
+
+      @if (punto.propio) {
+        <button class="eliminar" (click)="eliminarLugar()">Eliminar este lugar</button>
+      }
     </div>
-  } @empty {
-    <p>Aún no hay fotos de este lugar.</p>
   }
-</div>
-
-<div class="acciones">
-  <ion-button expand="block" [disabled]="fotosActuales().length >= maxFotos" (click)="tomarFoto()">
-    📷 Tomar foto
-  </ion-button>
-
-  <ion-button expand="block" fill="outline" [disabled]="fotosActuales().length >= maxFotos" (click)="subirDeGaleria()">
-    🖼️ Galería
-  </ion-button>
-</div>
-
-<small class="contador">{{ fotosActuales().length }}/{{ maxFotos }} fotos</small>
-    </div>
-  }
-  <!-- ===== PANEL NUEVO (termina aquí) ===== -->
 </ion-content>
+
+<!-- Modal: lista de lugares -->
+<ion-modal
+  [isOpen]="listaAbierta()"
+  [breakpoints]="[0, 0.45, 0.9]"
+  [initialBreakpoint]="0.45"
+  (didDismiss)="listaAbierta.set(false)"
+>
+  <ng-template>
+    <ion-content class="ion-padding">
+      <div class="modal-titulo">
+        <h2>Lugares</h2>
+        <span>{{ listaFiltrada().length }}</span>
+      </div>
+
+      <ion-searchbar
+        placeholder="Buscar lugar"
+        [debounce]="150"
+        (ionInput)="busqueda.set($any($event).detail.value ?? '')"
+      ></ion-searchbar>
+
+      @for (item of listaFiltrada(); track item.lugar.id) {
+        <div class="fila" (click)="seleccionarLugar(item.lugar)">
+          <div class="fila-icono">{{ info[item.lugar.typo].emoji }}</div>
+          <div class="fila-texto">
+            <strong>{{ item.lugar.nombre }}</strong>
+            <small>{{ info[item.lugar.typo].nombre }} · {{ formatear(item.metros) }}</small>
+          </div>
+          <button class="icono" (click)="alternarFavorito(item.lugar.id, $event)">
+            {{ places.esFavorito(item.lugar.id) ? '⭐' : '☆' }}
+          </button>
+        </div>
+      } @empty {
+        <p class="vacio">No hay lugares aquí todavía.</p>
+      }
+    </ion-content>
+  </ng-template>
+</ion-modal>
+
+<!-- Modal: nuevo lugar -->
+<ion-modal
+  [isOpen]="nuevoCoord() !== null"
+  [breakpoints]="[0, 0.6, 0.9]"
+  [initialBreakpoint]="0.6"
+  (didDismiss)="cancelarNuevo()"
+>
+  <ng-template>
+    <ion-content class="ion-padding">
+      <h2>Nuevo lugar</h2>
+
+      <input
+        class="campo"
+        type="text"
+        placeholder="Nombre del lugar"
+        maxlength="60"
+        [value]="nuevoNombre()"
+        (input)="nuevoNombre.set($any($event.target).value)"
+      />
+
+      <p class="etiqueta">Categoría</p>
+      <div class="categorias">
+        @for (c of categorias; track c) {
+          <button class="chip" [class.activo]="nuevoTipo() === c" (click)="nuevoTipo.set(c)">
+            {{ info[c].emoji }} {{ info[c].nombre }}
+          </button>
+        }
+      </div>
+
+      <ion-button expand="block" shape="round" [disabled]="!nuevoNombre().trim()" (click)="guardarNuevo()">
+        Guardar lugar
+      </ion-button>
+    </ion-content>
+  </ng-template>
+</ion-modal>

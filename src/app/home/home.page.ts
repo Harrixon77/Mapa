@@ -1,501 +1,333 @@
-import { AfterViewInit, Component, computed, signal, inject} from '@angular/core';
-import { IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonFab, IonFabButton } from '@ionic/angular';
-import  * as  L from "leaflet";
-//import { map } from 'rxjs/internal/operators/map';
+import { AfterViewInit, Component, computed, effect, inject, signal } from '@angular/core';
+import {
+  IonHeader, IonToolbar, IonTitle, IonContent, IonButton,
+  IonModal, IonSearchbar, ToastController,
+} from '@ionic/angular';
+import * as L from 'leaflet';
 import { Geolocation } from '@capacitor/geolocation';
-import { MAX_FOTOS,PhotoService } from '../services/photo';
+import { MAX_FOTOS, PhotoService, ResultadoFoto } from '../services/photo';
+import { PlacesService } from '../services/places.service';
+import { CATEGORIAS, Categoria, INFO_CATEGORIA, Lugar } from '../models/lugar';
+import { Capacitor } from '@capacitor/core';
 
-interface PuntosDeInteres {
-  id : string;
-  nombre: string;
-  typo: 'Parque' | 'Museo' | 'CentroComercial' | 'Universidad' | 'Estadio' | 'Planetario' | 'Biblioteca';
-  coordenadas: [latitude: number, longitude: number];
-}
-
-
-   const Puntos: PuntosDeInteres[] = [
-  {
-    id: '1',
-    nombre: 'Plaza de Bolívar',
-    typo: 'Parque',
-    coordenadas: [4.5981, -74.0758]
-  },
-  {
-    id: '2',
-    nombre: 'Museo del Oro',
-    typo: 'Museo',
-    coordenadas: [4.6010, -74.0721]
-  },
-  {
-    id: '3',
-    nombre: 'Monserrate',
-    typo: 'Parque',
-    coordenadas: [4.6050, -74.0550]
-  },
-  {
-    id: '4',
-    nombre: 'Museo Nacional de Colombia',
-    typo: 'Museo',
-    coordenadas: [4.6150, -74.0680]
-  },
-  {
-    id: '5',
-    nombre: 'Parque Nacional',
-    typo: 'Parque',
-    coordenadas: [4.6250, -74.0630]
-  },
-  {
-    id: '6',  
-    nombre: 'Parque de la Independencia',
-    typo: 'Parque',
-    coordenadas: [4.6135, -74.0695]
-  },
-  {
-    id: '7',
-    nombre: 'Planetario de Bogotá',
-    typo: 'Planetario',
-    coordenadas: [4.6138, -74.0695]
-  },
-  {
-    id: '8',
-    nombre: 'Torre Colpatria',
-    typo: 'CentroComercial',
-    coordenadas: [4.6102, -74.0700]
-  },
-  {
-    id: '9',
-    nombre: 'Biblioteca Luis Ángel Arango',
-    typo: 'Biblioteca',
-    coordenadas: [4.5965, -74.0735]
-  },
-  {
-    id: '10',
-    nombre: 'Chorro de Quevedo',
-    typo: 'Parque',
-    coordenadas: [4.5970, -74.0695]
-  },
-  {
-    id: '11',
-    nombre: 'Universidad Nacional de Colombia',
-    typo: 'Universidad',
-    coordenadas: [4.6380, -74.0840]
-  },
-  {
-    id: '12',
-    nombre: 'Estadio Nemesio Camacho El Campín',
-    typo: 'Estadio',
-    coordenadas: [4.6450, -74.0770]
-  },
-  {
-    id: '13',
-    nombre: 'Parque Simón Bolívar',
-    typo: 'Parque',
-    coordenadas: [4.6580, -74.0940]
-  },
-  {
-    id: '14',
-    nombre: 'Jardín Botánico de Bogotá',
-    typo: 'Parque',
-    coordenadas: [4.6680, -74.1000]
-  },
-  {
-    id: '15',
-    nombre: 'Centro Comercial Gran Estación',
-    typo: 'CentroComercial',
-    coordenadas: [4.6470, -74.1020]
-  },
-  {
-    id: '16',
-    nombre: 'Centro Comercial Andino',
-    typo: 'CentroComercial',
-    coordenadas: [4.6660, -74.0540]
-  },
-  {
-    id: '17',
-    nombre: 'Parque de la 93',
-    typo: 'Parque',
-    coordenadas: [4.6760, -74.0480]
-  },
-  {
-    id: '18',
-    nombre: 'Unicentro Bogotá',
-    typo: 'CentroComercial',
-    coordenadas: [4.7020, -74.0410]
-  },
-  {
-    id: '19',
-    nombre: 'Usaquén',
-    typo: 'Parque',
-    coordenadas: [4.6950, -74.0300]
-  },
-  {
-    id: '20',
-    nombre: 'Corferias',
-    typo: 'CentroComercial',
-    coordenadas: [4.6320, -74.0910]
-  }
-];
-
+type Filtro = 'todos' | 'favoritos' | Categoria;
 
 @Component({
   selector: 'app-home',
   templateUrl: 'home.page.html',
   styleUrls: ['home.page.scss'],
-  imports: [IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonFab, IonFabButton],
+  imports: [IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonModal, IonSearchbar],
 })
 export class HomePage implements AfterViewInit {
   private photoService = inject(PhotoService);
-  puntoSeleccionado = signal<PuntosDeInteres | null>(null);
-  maxFotos = MAX_FOTOS;
+  private toast = inject(ToastController);
+  places = inject(PlacesService);
 
-fotosActuales = computed(() => {
-  const punto = this.puntoSeleccionado();
-  return punto ? this.photoService.getPhotos(punto.id) : [];
-});
+  // ----- Mapa -----
+  private map!: L.Map;
+  private capaMarcadores = L.layerGroup();
+  private marcadorUsuario?: L.Marker;
+  private marcadorTemporal?: L.CircleMarker;
+  private rutaActual?: L.Polyline;
+  private mapaListo = signal(false);
+  private ubicacion = signal({ latitude: 4.60971, longitude: -74.08175 }); // Bogotá por defecto
 
-  private map !: L.Map ;
-  private ubicacionUsuario!: {latitude: number, longitude: number};
-  private rutaActual?: L.Polyline;     
-  private MarcadorUsuario?: L.Marker; // Marcador del usuario
-  
   private IconoUsuario = L.icon({
     iconUrl: 'assets/icon/person.png',
     iconSize: [32, 32],
     iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
   });
 
-  private IconoPorTipo: Record<string,L.Icon>={
+  // ----- Estado de la pantalla -----
+  puntoSeleccionado = signal<Lugar | null>(null);
+  filtro = signal<Filtro>('todos');
+  listaAbierta = signal(false);
+  busqueda = signal('');
 
-    Parque: L.icon({
-      iconUrl: 'assets/icon/1.png',
-      iconSize: [40, 40],
-      iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-    }),
-      Biblioteca: L.icon({
-      iconUrl: 'assets/icon/1.png',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-      }),
-      CentroComercial: L.icon({
-      iconUrl: 'assets/icon/1.png',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-      }),
-      Universidad: L.icon({
-      iconUrl: 'assets/icon/1.png',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-      }),
-      Museo: L.icon({
-      iconUrl: 'assets/icon/1.png',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-      }),
-      Planetario: L.icon({
-      iconUrl: 'assets/icon/1.png',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-      }),
-      Estadio: L.icon({
-      iconUrl: 'assets/icon/1.png',
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-    popupAnchor: [0, -32]
-      
+  // Formulario "nuevo lugar"
+  nuevoCoord = signal<[number, number] | null>(null);
+  nuevoNombre = signal('');
+  nuevoTipo = signal<Categoria>('Cafe');
 
+  maxFotos = MAX_FOTOS;
+  categorias = CATEGORIAS;
+  info = INFO_CATEGORIA;
 
-    }),
-  };
+  // ----- Valores calculados (se actualizan solos) -----
+  fotosActuales = computed(() => {
+    const punto = this.puntoSeleccionado();
+    return punto ? this.photoService.getPhotos(punto.id) : [];
+  });
 
-  constructor() {}
-  ngAfterViewInit(): void {
-    this.punto();
-  }
+  // Chips: Todos, Favoritos y solo las categorías que tengan lugares
+  chips = computed<{ clave: Filtro; etiqueta: string }[]>(() => {
+    const usadas = new Set(this.places.todos().map((l) => l.typo));
+    return [
+      { clave: 'todos', etiqueta: 'Todos' },
+      { clave: 'favoritos', etiqueta: '⭐ Favoritos' },
+      ...CATEGORIAS.filter((c) => usadas.has(c)).map((c) => ({
+        clave: c as Filtro,
+        etiqueta: `${INFO_CATEGORIA[c].emoji} ${INFO_CATEGORIA[c].plural}`,
+      })),
+    ];
+  });
 
+  lugaresVisibles = computed(() => {
+    const f = this.filtro();
+    const todos = this.places.todos();
+    if (f === 'todos') return todos;
+    if (f === 'favoritos') {
+      const favs = this.places.favoritos();
+      return todos.filter((l) => favs.includes(l.id));
+    }
+    return todos.filter((l) => l.typo === f);
+  });
 
-  async punto () {
-  const point = await Geolocation.getCurrentPosition();
-  const{ latitude, longitude } = point.coords;
-  this.ubicacionUsuario = { latitude, longitude };
+  // Lista del modal: filtrada por búsqueda y ordenada por cercanía
+  listaFiltrada = computed(() => {
+    const q = this.busqueda().trim().toLowerCase();
+    const { latitude, longitude } = this.ubicacion();
+    return this.lugaresVisibles()
+      .filter((l) => l.nombre.toLowerCase().includes(q))
+      .map((l) => ({
+        lugar: l,
+        metros: this.calcularDistancia(latitude, longitude, l.coordenadas[0], l.coordenadas[1]),
+      }))
+      .sort((a, b) => a.metros - b.metros);
+  });
 
-  this.map = L.map('map').setView([latitude, longitude], 17);
-  
-  
+  distanciaPanel = computed(() => {
+    const p = this.puntoSeleccionado();
+    if (!p) return '';
+    const { latitude, longitude } = this.ubicacion();
+    return this.formatear(this.calcularDistancia(latitude, longitude, p.coordenadas[0], p.coordenadas[1]));
+  });
 
-    /*this.map =  L.map('map').setView([4.60971, -74.08175], 16);*/
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(this.map);
-
-  this.MarcadorUsuario= L.marker([latitude, longitude], { icon: this.IconoUsuario })
-    .addTo(this.map)
-    .bindPopup('AQUI ANDO YO')
-    .openPopup();
-
-
-    Puntos.forEach((p) => { 
-      const distancia = this.calcularDistancia(latitude, longitude, p.coordenadas[0], p.coordenadas[1]);
-      const distanciaTexto = distancia <1000 ? `${distancia.toFixed(0)} m` : `${(distancia / 1000).toFixed(2)} km`;
-    
-
-      const marker = L.marker(p.coordenadas as L.LatLngExpression, { icon: this.IconoPorTipo[p.typo] });
-      marker.addTo(this.map);
-      marker.bindPopup(`${p.nombre}<br>Distancia: ${distanciaTexto}`);
-      
-//AYUDO IA+
-      marker.on('click', () => {
-  this.seleccionarPunto(p);                          // <- NUEVO: abre el panel
-  this.trazarRuta(p.coordenadas[0], p.coordenadas[1]); // lo que ya tenías
-});
-//FIN IA +
+  constructor() {
+    // Cada vez que cambian los lugares visibles o los favoritos, se redibujan los marcadores
+    effect(() => {
+      if (!this.mapaListo()) return;
+      this.dibujarMarcadores(this.lugaresVisibles(), this.places.favoritos());
     });
-
-  
-    setTimeout(() => {
-      this.map.invalidateSize();
-    }, 100);
-
   }
-//AYUDA IA +
-  seleccionarPunto(p: PuntosDeInteres) {
-  this.puntoSeleccionado.set(p);
-}
 
-async tomarFoto() {
-  const punto = this.puntoSeleccionado();
-  if (!punto) return;
+  ngAfterViewInit(): void {
+    this.iniciarMapa();
+  }
 
-  const resultado = await this.photoService.takePhoto(punto.id);
+  // =============== MAPA ===============
+  async iniciarMapa() {
+    // El mapa se crea primero, sin depender del GPS
+    this.map = L.map('map', { zoomControl: false }).setView([4.60971, -74.08175], 15);
 
-  if (resultado === 'limite') alert(`Máximo ${MAX_FOTOS} fotos por punto.`);
-  if (resultado === 'sin-espacio') alert('No hay espacio para guardar más fotos.');
-}
-async subirDeGaleria() {
-  const punto = this.puntoSeleccionado();
-  if (!punto) return;
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    }).addTo(this.map);
 
-  const resultado = await this.photoService.pickFromGallery(punto.id);
+    this.capaMarcadores.addTo(this.map);
+    this.map.on('click', (e: L.LeafletMouseEvent) => this.alTocarMapa(e));
+    this.mapaListo.set(true);
 
-  if (resultado === 'limite') alert(`Máximo ${MAX_FOTOS} fotos por punto.`);
-  if (resultado === 'sin-espacio') alert('No hay espacio para guardar más fotos.');
-}
+    setTimeout(() => this.map.invalidateSize(), 100);
 
-borrarFoto(index: number) {
-  const punto = this.puntoSeleccionado();
-  if (punto) this.photoService.deletePhoto(punto.id, index);
-}
+    await this.centrarEnMiUbicacion();
 
-cerrarPanel() {
-  this.puntoSeleccionado.set(null);
-}
-// TERMINA AYUDA IA +
-async centrarEnMiUbicacion() {
-  try {
-    const { coords } = await Geolocation.getCurrentPosition();
+    if (!localStorage.getItem('pista_vista')) {
+      localStorage.setItem('pista_vista', '1');
+      this.avisar('Toca cualquier parte del mapa para agregar un lugar');
+    }
+  }
 
-    this.ubicacionUsuario = { latitude: coords.latitude, longitude: coords.longitude };
+  private crearIcono(l: Lugar, favorito: boolean): L.DivIcon {
+    const borde = favorito ? '#ffb400' : '#ffffff';
+    return L.divIcon({
+      className: '',
+      html: `<div style="width:38px;height:38px;border-radius:50%;background:#fff;border:3px solid ${borde};box-shadow:0 3px 10px rgba(0,0,0,.28);display:flex;align-items:center;justify-content:center;font-size:20px;">${INFO_CATEGORIA[l.typo].emoji}</div>`,
+      iconSize: [38, 38],
+      iconAnchor: [19, 19],
+    });
+  }
 
-    const posicion = L.latLng(coords.latitude, coords.longitude);
-    this.MarcadorUsuario?.setLatLng(posicion);
-    this.map.flyTo(posicion, 17);
-  } catch (error) {
-    console.error('No se pudo obtener la ubicación:', error);
+  private dibujarMarcadores(lugares: Lugar[], favoritos: string[]) {
+    this.capaMarcadores.clearLayers();
+
+    lugares.forEach((l) => {
+      const marker = L.marker(l.coordenadas, {
+        icon: this.crearIcono(l, favoritos.includes(l.id)),
+        title: l.nombre,
+      });
+      marker.on('click', () => this.seleccionarLugar(l));
+      this.capaMarcadores.addLayer(marker);
+    });
+  }
+
+  async centrarEnMiUbicacion() {
+    try {
+      if (Capacitor.isNativePlatform()) {
+  let permiso = await Geolocation.checkPermissions();
+
+  if (permiso.location !== 'granted') {
+    permiso = await Geolocation.requestPermissions();
+  }
+
+  if (permiso.location !== 'granted') {
+    this.avisar('Sin permiso de ubicación. Actívalo en Ajustes de la app.');
+    return;
   }
 }
+      const { coords } = await Geolocation.getCurrentPosition({ enableHighAccuracy: true, timeout: 10000 });
+      const pos = L.latLng(coords.latitude, coords.longitude);
+      this.ubicacion.set({ latitude: coords.latitude, longitude: coords.longitude });
+
+      if (this.marcadorUsuario) {
+        this.marcadorUsuario.setLatLng(pos);
+      } else {
+        this.marcadorUsuario = L.marker(pos, { icon: this.IconoUsuario }).addTo(this.map);
+      }
+      this.map.flyTo(pos, 16);
+    } catch (error) {
+      console.error('No se pudo obtener la ubicación:', error);
+      this.avisar('No pude obtener tu ubicación. Revisa el GPS y los permisos.');
+    }
+  }
+
+  // =============== SELECCIÓN Y PANEL ===============
+  seleccionarLugar(l: Lugar) {
+    this.listaAbierta.set(false);
+    this.puntoSeleccionado.set(l);
+    this.trazarRuta(l.coordenadas[0], l.coordenadas[1]);
+  }
+
+  cerrarPanel() {
+    this.puntoSeleccionado.set(null);
+    if (this.rutaActual) {
+      this.map.removeLayer(this.rutaActual);
+      this.rutaActual = undefined;
+    }
+  }
+
+  alternarFavorito(id: string, evento?: Event) {
+    evento?.stopPropagation(); // evita que el click también abra el lugar
+    this.places.alternarFavorito(id);
+  }
+
+  eliminarLugar() {
+    const p = this.puntoSeleccionado();
+    if (!p?.propio) return;
+    if (!confirm(`¿Eliminar "${p.nombre}" y sus fotos?`)) return;
+
+    this.photoService.deleteAll(p.id);
+    this.places.eliminar(p.id);
+    this.cerrarPanel();
+  }
+
+  // ====AGREGAR LUGAR
+  private alTocarMapa(e: L.LeafletMouseEvent) {
+    // Si hay un panel abierto, el primer toque solo lo cierra
+    if (this.puntoSeleccionado()) {
+      this.cerrarPanel();
+      return;
+    }
+
+    this.nuevoNombre.set('');
+    this.nuevoTipo.set('Cafe');
+    this.nuevoCoord.set([e.latlng.lat, e.latlng.lng]);
+
+    this.marcadorTemporal?.remove();
+    this.marcadorTemporal = L.circleMarker(e.latlng, {
+      radius: 9, color: '#007aff', fillColor: '#007aff', fillOpacity: 0.5,
+    }).addTo(this.map);
+  }
+
+  guardarNuevo() {
+    const coord = this.nuevoCoord();
+    const nombre = this.nuevoNombre().trim();
+    if (!coord || !nombre) return;
+
+    const lugar = this.places.agregar(nombre, this.nuevoTipo(), coord);
+    this.cancelarNuevo();
+    this.filtro.set('todos');
+    this.seleccionarLugar(lugar);
+  }
+
+  cancelarNuevo() {
+    this.nuevoCoord.set(null);
+    this.marcadorTemporal?.remove();
+    this.marcadorTemporal = undefined;
+  }
+
+  // =============== FOTOS ===============
+  async tomarFoto() {
+    const punto = this.puntoSeleccionado();
+    if (!punto) return;
+    this.avisarResultado(await this.photoService.takePhoto(punto.id));
+  }
+
+  async subirDeGaleria() {
+    const punto = this.puntoSeleccionado();
+    if (!punto) return;
+    this.avisarResultado(await this.photoService.pickFromGallery(punto.id));
+  }
+
+  borrarFoto(index: number) {
+    const punto = this.puntoSeleccionado();
+    if (punto) this.photoService.deletePhoto(punto.id, index);
+  }
+
+  private avisarResultado(r: ResultadoFoto) {
+    if (r === 'limite') this.avisar(`Máximo ${MAX_FOTOS} fotos por lugar`);
+    if (r === 'sin-espacio') this.avisar('No hay espacio para guardar más fotos');
+    if (r === 'sin-permiso') this.avisar('Sin permiso. Actívalo en Ajustes → Apps → tu app → Permisos');
+if (r === 'error') this.avisar(`Error: ${this.photoService.ultimoError}`);
+  }
+
+  private async avisar(message: string) {
+    const t = await this.toast.create({ message, duration: 2200, position: 'top', color: 'dark' });
+    await t.present();
+  }
+
+  // =============== DISTANCIA Y RUTAS ===============
+  formatear(metros: number): string {
+    return metros < 1000 ? `${metros.toFixed(0)} m` : `${(metros / 1000).toFixed(1)} km`;
+  }
 
   private calcularDistancia(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const R = 6371e3; // Radio de la Tierra en metros
-    const φ1 = lat1 * Math.PI / 180; // Convertir a radianes
-    const φ2 = lat2 * Math.PI / 180; // Convertir a radianes
-    const Δφ = (lat2 - lat1) * Math.PI / 180; // Diferencia de latitud en radianes
-    const Δλ = (lon2 - lon1) * Math.PI / 180; // Diferencia de longitud en radianes
+    const R = 6371e3;
+    const φ1 = (lat1 * Math.PI) / 180;
+    const φ2 = (lat2 * Math.PI) / 180;
+    const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+    const Δλ = ((lon2 - lon1) * Math.PI) / 180;
 
-    const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-              Math.cos(φ1) * Math.cos(φ2) *
-              Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return R * c; // Distancia en metros
+    const a =
+      Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+      Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   }
-    private async obtenerRuta(origenLat: number, origenLng: number, destinoLat: number, destinoLng: number): Promise<L.LatLng[]> {
-    const url = `https://router.project-osrm.org/route/v1/foot/${origenLng},${origenLat};${destinoLng},${destinoLat}?overview=full&geometries=geojson`;
 
+  private async obtenerRuta(oLat: number, oLng: number, dLat: number, dLng: number): Promise<L.LatLng[]> {
+    const url = `https://router.project-osrm.org/route/v1/foot/${oLng},${oLat};${dLng},${dLat}?overview=full&geometries=geojson`;
     const response = await fetch(url);
     const data = await response.json();
 
-    if (!data.routes || data.routes.length === 0) {
-      throw new Error('No se encontró ruta');
-    }
+    if (!data.routes || data.routes.length === 0) throw new Error('No se encontró ruta');
 
     return data.routes[0].geometry.coordinates.map(
-      (coord: [number, number]) => L.latLng(coord[1], coord[0])
+      (c: [number, number]) => L.latLng(c[1], c[0])
     );
   }
 
   async trazarRuta(destinoLat: number, destinoLng: number) {
     try {
-      const coordenadas = await this.obtenerRuta(
-        this.ubicacionUsuario.latitude,
-        this.ubicacionUsuario.longitude,
-        destinoLat,
-        destinoLng
-      );
+      const { latitude, longitude } = this.ubicacion();
+      const coordenadas = await this.obtenerRuta(latitude, longitude, destinoLat, destinoLng);
 
-      if (this.rutaActual) {
-        this.map.removeLayer(this.rutaActual);
-      }
+      if (this.rutaActual) this.map.removeLayer(this.rutaActual);
 
-      this.rutaActual = L.polyline(coordenadas, {
-        color: '#3388ff',
-        weight: 5,
-        opacity: 0.8
-      }).addTo(this.map);
-
-      this.map.fitBounds(this.rutaActual.getBounds(), { padding: [50, 50] });
-
+      this.rutaActual = L.polyline(coordenadas, { color: '#007aff', weight: 5, opacity: 0.85 }).addTo(this.map);
+      this.map.fitBounds(this.rutaActual.getBounds(), { padding: [60, 60] });
     } catch (error) {
       console.error('Error trazando ruta:', error);
+      this.map.flyTo([destinoLat, destinoLng], 16); // plan B: al menos ir al lugar
     }
   }
 }
-
-
-/*
-import { AfterViewInit, Component } from '@angular/core';
-import { IonHeader, IonToolbar, IonTitle, IonContent } from '@ionic/angular';
-import * as L from 'leaflet';
-import { Geolocation } from '@capacitor/geolocation';
-
-@Component({
-  selector: 'app-home',
-  templateUrl: 'home.page.html',
-  styleUrls: ['home.page.scss'],
-  imports: [IonHeader, IonToolbar, IonTitle, IonContent],
-})
-export class HomePage implements AfterViewInit {
-
-  private map!: L.Map;
-
-  constructor() {}
-
-  ngAfterViewInit(): void {
-    this.Initmap();
-  }
-
-  async Initmap() {
-
-    this.map = L.map('map').setView([4.60971, -74.08175], 12);
-
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    }).addTo(this.map);
-
-   const puntos = [
-  {
-    nombre: 'Plaza de Bolívar',
-    coordenadas: [4.5981, -74.0758]
-  },
-  {
-    nombre: 'Museo del Oro',
-    coordenadas: [4.6010, -74.0721]
-  },
-  {
-    nombre: 'Monserrate',
-    coordenadas: [4.6050, -74.0550]
-  },
-  {
-    nombre: 'Museo Nacional de Colombia',
-    coordenadas: [4.6150, -74.0680]
-  },
-  {
-    nombre: 'Parque Nacional',
-    coordenadas: [4.6250, -74.0630]
-  },
-  {
-    nombre: 'Parque de la Independencia',
-    coordenadas: [4.6135, -74.0695]
-  },
-  {
-    nombre: 'Planetario de Bogotá',
-    coordenadas: [4.6138, -74.0695]
-  },
-  {
-    nombre: 'Torre Colpatria',
-    coordenadas: [4.6102, -74.0700]
-  },
-  {
-    nombre: 'Biblioteca Luis Ángel Arango',
-    coordenadas: [4.5965, -74.0735]
-  },
-  {
-    nombre: 'Chorro de Quevedo',
-    coordenadas: [4.5970, -74.0695]
-  },
-  {
-    nombre: 'Universidad Nacional de Colombia',
-    coordenadas: [4.6380, -74.0840]
-  },
-  {
-    nombre: 'Estadio Nemesio Camacho El Campín',
-    coordenadas: [4.6450, -74.0770]
-  },
-  {
-    nombre: 'Parque Simón Bolívar',
-    coordenadas: [4.6580, -74.0940]
-  },
-  {
-    nombre: 'Jardín Botánico de Bogotá',
-    coordenadas: [4.6680, -74.1000]
-  },
-  {
-    nombre: 'Centro Comercial Gran Estación',
-    coordenadas: [4.6470, -74.1020]
-  },
-  {
-    nombre: 'Centro Comercial Andino',
-    coordenadas: [4.6660, -74.0540]
-  },
-  {
-    nombre: 'Parque de la 93',
-    coordenadas: [4.6760, -74.0480]
-  },
-  {
-    nombre: 'Unicentro Bogotá',
-    coordenadas: [4.7020, -74.0410]
-  },
-  {
-    nombre: 'Usaquén',
-    coordenadas: [4.6950, -74.0300]
-  },
-  {
-    nombre: 'Corferias',
-    coordenadas: [4.6320, -74.0910]
-  }
-];
-
-  puntos.forEach((punto) => {
-
-  L.marker(punto.coordenadas as L.LatLngExpression)
-    .addTo(this.map)
-    .bindPopup(`<b>${punto.nombre}</b>`);
-
-});
-
-    setTimeout(() => {
-      this.map.invalidateSize();
-    }, 100);
-  }
-
-  async punto() {
-    const point = await Geolocation.getCurrentPosition();
-    console.log(point);
-  }
-} */
